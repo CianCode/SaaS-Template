@@ -1,7 +1,15 @@
+"use client";
+
 import Link from "next/link";
-import React from "react";
+import React, { useState } from "react";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import OauthButtons from "@/components/auth/oauth-buttons";
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,18 +21,93 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import {
+  RegisterFormValues,
+  registerSchema,
+} from "@/validations/register-schema";
 
-const RegisterForm = ({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) => {
+/**
+ * Registration form component with validation and password strength checking.
+ *
+ * Features:
+ * - Form validation using Zod schema
+ * - Password strength visualization
+ * - OAuth integration options
+ * - Terms and conditions agreement
+ * - Password visibility toggle
+ * - Responsive design
+ */
+const RegisterForm = () => {
+  // Form state management using react-hook-form
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+  });
+
+  // Local state for password visibility toggle
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Watch password field for real-time strength evaluation
+  const password = useWatch({
+    control,
+    name: "password",
+    defaultValue: "",
+  });
+
+  /**
+   * Handles form submission with validated data
+   * @param data - Validated form data according to RegisterFormValues
+   */
+  const onSubmit = async (data: RegisterFormValues) => {
+    await authClient.signUp.email(
+      {
+        email: data.email,
+        password: data.password,
+        name: data.name,
+      },
+      {
+        onRequest: () => {
+          setErrorMessage("");
+          setIsSubmitting(true);
+        },
+        onSuccess: async (ctx) => {
+          console.log(ctx);
+          await authClient.emailOtp.sendVerificationOtp({
+            email: data.email,
+            type: "email-verification", // or "sign-in", "forget-password"
+          });
+          setIsSubmitting(false);
+        },
+        onError: (ctx) => {
+          // display the error message
+          setErrorMessage(ctx.error.message);
+          setIsSubmitting(false);
+        },
+      },
+    );
+  };
+
+  /**
+   * Toggles password visibility state
+   */
+  const togglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
+
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div className={cn("flex flex-col gap-6")}>
       <Card className="p-5">
         <CardHeader>
           <div className="mt-6 flex items-start">
-            <Link title="Home" data-headlessui-state="" href="/">
+            <Link title="Home" href="/">
               <svg viewBox="0 0 34 34" fill="none" className="h-9 fill-black">
                 <path d="M19.598 18.5C18.7696 19.9349 16.9348 20.4265 15.4999 19.5981C14.065 18.7696 13.5734 16.9349 14.4018 15.5C15.2303 14.0651 17.065 13.5735 18.4999 14.4019C19.9348 15.2303 20.4264 17.0651 19.598 18.5Z"></path>
                 <path d="M23.232 10.2058C22.6797 11.1623 21.4565 11.4901 20.4999 10.9378C19.5433 10.3855 19.2156 9.16235 19.7679 8.20576C20.3201 7.24918 21.5433 6.92143 22.4999 7.47371C23.4565 8.026 23.7842 9.24918 23.232 10.2058Z"></path>
@@ -55,58 +138,133 @@ const RegisterForm = ({
             Create your account to continue.
           </CardDescription>
         </CardHeader>
+
         <CardContent>
-          <form>
+          <form onSubmit={handleSubmit(onSubmit)}>
             <div className="mt-4 flex flex-col gap-6">
-              <div>
-                <OauthButtons />
-                <div className="after:border-border relative mt-8 text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
-                  <span className="bg-background text-muted-foreground relative z-10 px-2">
-                    Or continue with
-                  </span>
-                </div>
+              {/* OAuth Providers Section */}
+              <OauthButtons />
+
+              {/* Divider with "Or" text */}
+              <div className="after:border-border relative mt-4 text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
+                <span className="bg-background text-muted-foreground relative z-10 px-2">
+                  Or continue with
+                </span>
               </div>
+
+              {/* Name Input Field */}
               <div className="grid gap-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" type="name" placeholder="John Doe" required />
+                <Input
+                  {...register("name")}
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  aria-invalid={!!errors.name}
+                />
+                {errors.name && (
+                  <p className="text-sm text-red-500">{errors.name.message}</p>
+                )}
               </div>
+
+              {/* Email Input Field */}
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
+                  {...register("email")}
                   id="email"
                   type="email"
                   placeholder="m@example.com"
-                  required
+                  aria-invalid={!!errors.email}
                 />
+                {errors.email && (
+                  <p className="text-sm text-red-500">{errors.email.message}</p>
+                )}
               </div>
-            </div>
-            <div className="mt-8 flex flex-col gap-6">
+
+              {/* Password Input Field with Strength Meter */}
               <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    {...register("password")}
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="********"
+                    aria-invalid={!!errors.password}
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+                <PasswordStrengthMeter password={password} />
+                {errors.password && (
+                  <p className="text-sm text-red-500">
+                    {errors.password.message}
+                  </p>
+                )}
               </div>
-            </div>
-            <div className="mt-8 flex flex-col gap-6">
+
+              {/* Confirm Password Field */}
               <div className="grid gap-2">
-                <Label htmlFor="password">Comfirm Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  required
-                />
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <div className="relative">
+                  <Input
+                    {...register("confirmPassword")}
+                    id="confirmPassword"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="********"
+                    aria-invalid={!!errors.confirmPassword}
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-sm text-red-500">
+                    {errors.confirmPassword.message}
+                  </p>
+                )}
               </div>
-            </div>
-            <div className="mt-8 flex items-center justify-between text-sm/5">
+
+              {/* Terms and Conditions Checkbox */}
               <div className="flex items-center gap-3">
-                <Checkbox id="terms2" />
+                <Controller
+                  name="terms"
+                  control={control}
+                  render={({ field }) => (
+                    <Checkbox
+                      id="terms"
+                      checked={!!field.value}
+                      onCheckedChange={field.onChange}
+                      aria-invalid={!!errors.terms}
+                    />
+                  )}
+                />
                 <label
-                  htmlFor="terms2"
+                  htmlFor="terms"
                   className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                 >
                   Accept{" "}
@@ -118,10 +276,38 @@ const RegisterForm = ({
                   </Link>
                 </label>
               </div>
+              {errors.terms && (
+                <p className="text-sm text-red-500">{errors.terms.message}</p>
+              )}
             </div>
-            <Button className="mt-8 w-full">Sign In</Button>
+
+            {/* Submit Button */}
+            <Button
+              className="mt-8 w-full"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing up...
+                </div>
+              ) : (
+                "Sign Up"
+              )}
+            </Button>
           </form>
-          <div className="m-1.5 mt-8 w-full rounded-lg bg-gray-50 py-4 text-center text-sm/5 ring-1 ring-black/5">
+
+          {/* Error Message Section */}
+          {errorMessage && (
+            <Alert className="mt-4" variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{errorMessage}</AlertTitle>
+            </Alert>
+          )}
+
+          {/* Login Link Section */}
+          <div className="mt-8 w-full rounded-lg bg-gray-50 py-4 text-center text-sm/5 ring-1 ring-black/5">
             Already have an account?{" "}
             <Link className="font-medium hover:text-gray-600" href="/login">
               Sign In

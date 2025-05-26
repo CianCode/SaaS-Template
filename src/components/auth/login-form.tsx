@@ -1,7 +1,14 @@
+"use client";
+
 import Link from "next/link";
-import React from "react";
+import React, { useState } from "react";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Controller, useForm } from "react-hook-form";
 
 import OauthButtons from "@/components/auth/oauth-buttons";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,16 +20,74 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import { LoginFormValues, loginSchema } from "@/validations/login-schema";
 
-const LoginForm = ({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) => {
+/**
+ * LoginForm component - Handles user authentication
+ *
+ * Features:
+ * - Email/password login
+ * - OAuth provider integration
+ * - Remember me functionality
+ * - Forgot password flow
+ * - Responsive design
+ * - Clear navigation to registration
+ *
+ * @returns {React.ReactElement} A complete login form with validation and third-party auth options
+ */
+const LoginForm = (): React.ReactElement => {
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const onSubmit = async (data: LoginFormValues) => {
+    console.log(data);
+    await authClient.signIn.email(
+      {
+        email: data.email,
+        password: data.password,
+        rememberMe: data.rememberMe,
+      },
+      {
+        onRequest: () => {
+          setIsSubmitting(true);
+          setErrorMessage("");
+        },
+        onSuccess: (ctx) => {
+          //redirect to the dashboard or sign in page
+          setIsSubmitting(false);
+          console.log(ctx);
+        },
+        onError: (ctx) => {
+          setErrorMessage(ctx.error.message);
+          setIsSubmitting(false);
+        },
+      },
+    );
+  };
+
+  /**
+   * Toggles password visibility state
+   */
+  const togglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
+    <div className={cn("flex flex-col gap-6")}>
       <Card className="p-5">
         <CardHeader>
+          {/* Branding/Logo Section */}
           <div className="mt-6 flex items-start">
             <Link title="Home" data-headlessui-state="" href="/">
               <svg viewBox="0 0 34 34" fill="none" className="h-9 fill-black">
@@ -48,6 +113,8 @@ const LoginForm = ({
               </svg>
             </Link>
           </div>
+
+          {/* Form Header */}
           <CardTitle className="mt-8 text-base/6 font-medium">
             Welcome back!
           </CardTitle>
@@ -55,9 +122,11 @@ const LoginForm = ({
             Sign in to your account to continue.
           </CardDescription>
         </CardHeader>
+
         <CardContent>
-          <form>
+          <form onSubmit={handleSubmit(onSubmit)}>
             <div className="mt-4 flex flex-col gap-6">
+              {/* OAuth Providers Section */}
               <div>
                 <OauthButtons />
                 <div className="after:border-border relative mt-8 text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
@@ -66,33 +135,67 @@ const LoginForm = ({
                   </span>
                 </div>
               </div>
+
+              {/* Email Input Field */}
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
+                  {...register("email")}
                   id="email"
                   type="email"
                   placeholder="m@example.com"
-                  required
+                  aria-invalid={!!errors.email}
                 />
               </div>
             </div>
+
             <div className="mt-8 flex flex-col gap-6">
+              {/* Password Input Field */}
               <div className="grid gap-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="********"
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    {...register("password")}
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="********"
+                    aria-invalid={!!errors.password}
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
+
+            {/* Remember Me & Forgot Password Section */}
             <div>
               <div className="mt-8 flex items-center justify-between text-sm/5">
                 <div className="flex items-center gap-3">
-                  <Checkbox id="terms2" />
+                  <Controller
+                    name="rememberMe"
+                    control={control}
+                    render={({ field }) => (
+                      <Checkbox
+                        id="rememberMe"
+                        checked={field.value || false} // Fallback to false
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
+                  />
                   <label
-                    htmlFor="terms2"
+                    htmlFor="remember"
                     className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     Remember me
@@ -103,9 +206,34 @@ const LoginForm = ({
                 </Link>
               </div>
             </div>
-            <Button className="mt-8 w-full">Sign In</Button>
+
+            {/* Submit Button */}
+            <Button
+              className="mt-8 w-full"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing ip...
+                </div>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
           </form>
-          <div className="m-1.5 mt-8 w-full rounded-lg bg-gray-50 py-4 text-center text-sm/5 ring-1 ring-black/5">
+
+          {/* Error Message Section */}
+          {errorMessage && (
+            <Alert className="mt-4" variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{errorMessage}</AlertTitle>
+            </Alert>
+          )}
+
+          {/* Registration Link Section */}
+          <div className="mt-8 w-full rounded-lg bg-gray-50 py-4 text-center text-sm/5 ring-1 ring-black/5">
             Not a member?{" "}
             <Link href="/register" className="font-medium hover:text-gray-600">
               Create an account
