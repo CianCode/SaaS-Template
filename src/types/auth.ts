@@ -12,11 +12,11 @@ export type Session = {
   id: string;
   createdAt: Date;
   updatedAt: Date;
-  expiresAt: Date; // Changed from 'expires'
+  expiresAt: Date;
   userId: string;
-  token: string; // Changed from 'sessionToken'
+  token: string;
   userAgent?: string | null;
-  ipAddress?: string | null; // Changed from 'ip'
+  ipAddress?: string | null;
 };
 
 export interface SessionWithUser {
